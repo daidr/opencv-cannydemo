@@ -124,10 +124,10 @@ function Utils(errorOutputId) { // eslint-disable-line no-unused-vars
     this.startCamera = function (resolution, callback, videoId) {
         const constraints = {
             'qvga': {
-                width: { exact: 320 }, height: { exact: 240 }, facingMode: "environment"
+                width: { exact: 640 }, height: { exact: 480 }, facingMode: "environment"
             },
             'vga': {
-                width: { exact: 640 }, height: { exact: 480 }, facingMode: "environment"
+                width: { exact: 1280 }, height: { exact: 960 }, facingMode: "environment"
             }
         };
         let video = document.getElementById(videoId);
