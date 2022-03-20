@@ -129,8 +129,8 @@
                 let cnt = contours.get(i);
                 let rect = cv.boundingRect(cnt);
 
-                if (rect.width < 50 || rect.height < 50) continue;
-                if (rect.width * rect.height < 500) continue;
+                if (rect.width < 30 || rect.height < 30) continue;
+                if (rect.width * rect.height < 100) continue;
 
                 let color = new cv.Scalar(0, 255, 255);
                 cv.drawContours(src, contours, i, color);
