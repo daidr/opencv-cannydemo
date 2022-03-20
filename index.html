@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ZH-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>物品轮廓获取demo - 戴兜</title>
+
+</head>
+
+<body>
+    <h2>物品轮廓获取demo</h2>
+    <p id="status">加载OpenCV中...</p>
+    <p><button id="calcBtn">计算</button><button id="cameraBtn">打开摄像头</button></p>
+    <div>
+        <div class="inputoutput">
+            <div>
+                <canvas id="canvasInput" width="700" height="400"></canvas>
+                <video id="videoInput" style="display:none;">Your browser does not support the video tag.</video>
+            </div>
+            <div class="caption">输入 <input type="file" id="fileInput" accept="image/*" name="file" /></div>
+        </div>
+        <div class="inputoutput">
+            <div>
+                <canvas id="canvasOutput"></canvas>
+            </div>
+            <div class="caption">输出</div>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        let vc = null;
+        let stats = null;
+        let streaming = false;
+        let inputElement = document.getElementById('fileInput');
+        let video = document.getElementById('videoInput');
+        let calcBtn = document.getElementById('calcBtn');
+        let cameraBtn = document.getElementById('cameraBtn');
+        let img = new Image();
+        let loading = true;
+        inputElement.addEventListener('change', (e) => {
+            img.src = URL.createObjectURL(e.target.files[0]);
+        }, false);
+        img.onload = function () {
+            let inCanvas = document.getElementById('canvasInput')
+            let inCanvasCtx = inCanvas.getContext('2d')
+            inCanvas.width = 600;
+            inCanvas.height = img.height * (inCanvas.width / img.width);
+            inCanvasCtx.drawImage(img, 0, 0, img.width, img.height, 0, 0, inCanvas.width, img.height * (inCanvas.width / img.width));
+            calcBtn.click()
+        };
+        function process() {
+            if (loading) {
+                return alert('正在加载opencv.js')
+            }
+            let src;
+            if (!streaming) {
+                if (!img.src) {
+                    return alert('请先上传图片')
+                }
+                src = cv.imread('canvasInput');
+            } else {
+                if (!vc) {
+                    return alert('未发现视频流')
+                }
+                src = new cv.Mat(height, width, cv.CV_8UC4);
+                vc.read(src);
+            }
+
+            // 灰度
+            let gray = new cv.Mat();
+            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+
+            // 高斯模糊
+            let blurred = new cv.Mat();
+            cv.GaussianBlur(gray, blurred, new cv.Size(3, 3), 0, 0)
+
+            // // 图像梯度
+            // let xgrad = new cv.Mat()
+            // let ygrad = new cv.Mat()
+            // cv.Sobel(blurred, xgrad, cv.CV_8U, 1, 0, 3, 1, 0, cv.BORDER_DEFAULT)
+            // cv.Sobel(blurred, ygrad, cv.CV_8U, 0, 1, 3, 1, 0, cv.BORDER_DEFAULT)
+
+            // 计算边缘
+            let edge_output = new cv.Mat()
+            cv.Canny(blurred, edge_output, 50, 150, 3, false)
+            let contours = new cv.MatVector();
+            let hierarchy = new cv.Mat();
+            cv.findContours(edge_output, contours, hierarchy, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE);
+
+            let removedIndex = [];
+
+            for (let i = 0; i < contours.size(); ++i) {
+                if (removedIndex.includes(i)) {
+                    continue;
+                }
+                let cnt = contours.get(i);
+                let rect = cv.boundingRect(cnt);
+
+                for (let j = i + 1; j < contours.size(); ++j) {
+                    if (removedIndex.includes(j)) {
+                        continue;
+                    }
+                    let cnt2 = contours.get(j);
+                    let rect2 = cv.boundingRect(cnt2);
+
+                    if (rect.x < rect2.x + 20 && rect.y < rect2.y + 20 && rect.x + rect.width > rect2.x + rect2.width && rect.y + rect.height > rect2.y + rect2.height) {
+                        removedIndex.push(j);
+                        --i;
+                        cnt2.delete();
+                        break;
+                    }
+
+                    if (rect2.x < rect.x + 20 && rect2.y < rect.y + 20 && rect2.x + rect2.width > rect.x + rect.width && rect2.y + rect2.height > rect.y + rect.height) {
+                        removedIndex.push(i);
+                        cnt2.delete();
+                        break;
+                    }
+                    cnt2.delete();
+                }
+
+                cnt.delete();
+            }
+            for (let i = 0; i < contours.size(); ++i) {
+                if (removedIndex.indexOf(i) > -1) {
+                    continue;
+                }
+                let cnt = contours.get(i);
+                let rect = cv.boundingRect(cnt);
+
+                if (rect.width < 50 || rect.height < 50) continue;
+                if (rect.width * rect.height < 500) continue;
+
+                let color = new cv.Scalar(0, 255, 255);
+                cv.drawContours(src, contours, i, color);
+                let point1 = new cv.Point(rect.x, rect.y);
+                let point2 = new cv.Point(rect.x + rect.width, rect.y + rect.height);
+                cv.rectangle(src, point1, point2, color, 2, cv.LINE_AA, 0);
+                cnt.delete();
+            }
+            let max = new cv.Mat();
+
+            //cv.convertScaleAbs(edge_output, edge_output, 1, 0);
+            cv.imshow('canvasOutput', src);
+            src.delete();
+            gray.delete();
+            blurred.delete();
+            // xgrad.delete();
+            // ygrad.delete();
+            edge_output.delete();
+            // after.delete();
+            max.delete();
+            contours.delete();
+            hierarchy.delete();
+        }
+        calcBtn.addEventListener('click', (e) => {
+            process()
+        })
+        function onOpenUtilsReady() {
+            let utils = new Utils('errorMessage');
+            utils.loadOpenCv(() => {
+                document.getElementById('status').innerHTML = 'OpenCV加载完毕';
+                loading = false;
+                stats = new Stats();
+                stats.showPanel(0);
+                document.body.appendChild(stats.domElement);
+                stats.domElement.style.position = 'absolute';
+                stats.domElement.style.right = '0px';
+                stats.domElement.style.top = '0px';
+            });
+        }
+        function startCamera() {
+            let utils = new Utils('errorMessage');
+            if (!streaming) {
+                let resolution = window.innerWidth < 960 ? 'qvga' : 'vga';
+                utils.startCamera(resolution, onVideoStarted, 'videoInput');
+            } else {
+                utils.stopCamera();
+                onVideoStopped();
+            }
+        }
+        function processVideo() {
+            if (!streaming) return;
+            stats.begin();
+            process();
+            stats.end();
+            requestAnimationFrame(processVideo);
+        }
+        function startVideoProcessing() {
+            requestAnimationFrame(processVideo);
+        }
+        function onVideoStarted() {
+            height = video.videoHeight;
+            width = video.videoWidth;
+            video.setAttribute('width', width);
+            video.setAttribute('height', height);
+            streaming = true;
+            vc = new cv.VideoCapture(video);
+            startVideoProcessing();
+        }
+
+        function onVideoStopped() {
+            if (!streaming) return;
+            streaming = false;
+        }
+
+        cameraBtn.addEventListener('click', (e) => {
+            if (loading) {
+                return alert('正在加载opencv.js')
+            }
+            if (streaming) {
+                cameraBtn.innerText = '打开摄像头'
+                streaming = true;
+                startCamera()
+            } else {
+                cameraBtn.innerText = '关闭摄像头'
+                streaming = false;
+                startCamera()
+            }
+        })
+    </script>
+
+    <script defer src="./Stats.min.js" type="text/javascript"></script>
+    <script defer src="./utils.js" onload="onOpenUtilsReady();" type="text/javascript"></script>
+</body>
+
+</html>
